@@ -106,3 +106,13 @@ def get_basename_without_extension(filename: str) -> str:
     """
     base = os.path.basename(filename)
     return os.path.splitext(base)[0]
+
+
+def clean_course_name(name: str) -> str:
+    """
+    Cleans the course name by removing parenthetical explanations.
+    E.g. "Veri Yapıları ve Algo (tek sayılı dersler uygulama ve lab)" -> "Veri Yapıları ve Algo"
+    """
+    cleaned = re.sub(r"\(.*?\)", "", name)
+    return cleaned.strip()
+

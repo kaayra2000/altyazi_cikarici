@@ -16,6 +16,7 @@ from altyazi_cikarici.downloader import VideoDownloader
 from altyazi_cikarici.transcriber import VideoTranscriber
 from altyazi_cikarici.utils import (
     calculate_lesson_indices,
+    clean_course_name,
     determine_year_folder,
     extract_date,
     get_basename_without_extension,
@@ -222,12 +223,13 @@ def main() -> None:
 
         for course_entry in courses:
             for course_name, urls in course_entry.items():
-                print(f"\n--- Course: {course_name} ---")
+                cleaned_name = clean_course_name(course_name)
+                print(f"\n--- Course: {cleaned_name} ---")
                 if not args.transcribe_only:
-                    downloader.download_course(course_name, urls)
+                    downloader.download_course(cleaned_name, urls)
 
                 if not args.download_only and transcriber:
-                    course_dir = os.path.join(args.output_dir, course_name)
+                    course_dir = os.path.join(args.output_dir, cleaned_name)
                     video_files = find_video_files(course_dir)
                     if video_files:
                         mappings = get_transcription_mappings(
@@ -235,7 +237,7 @@ def main() -> None:
                         )
                         transcribe_videos(mappings, transcriber)
                     else:
-                        print(f"No videos downloaded/found for {course_name}")
+                        print(f"No videos downloaded/found for {cleaned_name}")
     else:
         # Source is a directory
         if not os.path.exists(args.source):

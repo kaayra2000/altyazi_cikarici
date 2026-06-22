@@ -8,6 +8,7 @@ from altyazi_cikarici.utils import (
     extract_year,
     determine_year_folder,
     calculate_lesson_indices,
+    clean_course_name,
 )
 
 
@@ -165,4 +166,15 @@ def test_get_transcription_mappings_naming_styles():
     assert mappings_lab["videolar/Alt Seviye/BLM2021_21-01-2021.mp4"] == "videolar/Alt Seviye/2021/ders_3.srt"
     assert mappings_lab["videolar/Alt Seviye/BLM2021_25-01-2021.mp4"] == "videolar/Alt Seviye/2021/ders_3_lab.srt"
     assert mappings_lab["videolar/Alt Seviye/BLM2021_28-01-2021.mp4"] == "videolar/Alt Seviye/2021/ders_4.srt"
+
+
+def test_clean_course_name():
+    """
+    Test cleaning of course names.
+    """
+    assert clean_course_name("Veri Yapıları ve Algo (tek sayılı dersler uygulama ve lab)") == "Veri Yapıları ve Algo"
+    assert clean_course_name("İşletim Sistemleri (çift sayılı dersler uygulama ve lab)") == "İşletim Sistemleri"
+    assert clean_course_name("Veritabanı Yönetimi(tek sayılı dersler lab)") == "Veritabanı Yönetimi"
+    assert clean_course_name("Normal Ders") == "Normal Ders"
+
 

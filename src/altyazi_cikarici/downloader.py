@@ -31,6 +31,7 @@ class VideoDownloader:
             print(f"Already exists: {os.path.basename(target_path)}")
             return True
 
+        temp_path = target_path + ".tmp"
         print(f"Downloading: {url} -> {target_path}")
 
         try:
@@ -41,7 +42,7 @@ class VideoDownloader:
                 desc_name = os.path.basename(target_path)
                 if len(desc_name) > 30:
                     desc_name = desc_name[:27] + "..."
-                with open(target_path, "wb") as f, tqdm(
+                with open(temp_path, "wb") as f, tqdm(
                     desc=desc_name,
                     total=total_size,
                     unit="iB",
@@ -51,11 +52,19 @@ class VideoDownloader:
                     for chunk in r.iter_bytes(chunk_size=8192):
                         size = f.write(chunk)
                         bar.update(size)
+
+            os.replace(temp_path, target_path)
             return True
-        except Exception as e:
-            print(f"Failed to download {url}: {e}")
-            if os.path.exists(target_path):
-                os.remove(target_path)
+        except BaseException as e:
+            if not isinstance(e, KeyboardInterrupt):
+                print(f"Failed to download {url}: {e}")
+            if os.path.exists(temp_path):
+                try:
+                    os.remove(temp_path)
+                except Exception:
+                    pass
+            if isinstance(e, KeyboardInterrupt):
+                raise e
             return False
 
     def download_course(self, course_name: str, urls: List[str]) -> List[str]:
