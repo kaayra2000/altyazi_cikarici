@@ -130,3 +130,39 @@ def test_calculate_lesson_indices_same_day():
         datetime(2021, 1, 14),  # ders 3 (1 week gap -> +1)
     ]
     assert calculate_lesson_indices(dates) == [1, 2, 3]
+
+
+def test_get_transcription_mappings_naming_styles():
+    """
+    Test that get_transcription_mappings correctly maps naming styles
+    including original, lesson, and lesson-lab.
+    """
+    from altyazi_cikarici.main import get_transcription_mappings
+    
+    video_paths = [
+        "videolar/Alt Seviye/BLM2021_7-01-2021.mp4",
+        "videolar/Alt Seviye/BLM2021_11-01-2021.mp4",
+        "videolar/Alt Seviye/BLM2021_14-01-2021.mp4",
+        "videolar/Alt Seviye/BLM2021_21-01-2021.mp4",
+        "videolar/Alt Seviye/BLM2021_25-01-2021.mp4",
+        "videolar/Alt Seviye/BLM2021_28-01-2021.mp4",
+    ]
+    
+    # 1. Test original
+    mappings_orig = get_transcription_mappings(video_paths, naming_style="original")
+    assert mappings_orig["videolar/Alt Seviye/BLM2021_7-01-2021.mp4"] == "videolar/Alt Seviye/2021/BLM2021_7-01-2021.srt"
+    
+    # 2. Test lesson
+    mappings_lesson = get_transcription_mappings(video_paths, naming_style="lesson")
+    assert mappings_lesson["videolar/Alt Seviye/BLM2021_7-01-2021.mp4"] == "videolar/Alt Seviye/2021/ders_1.srt"
+    assert mappings_lesson["videolar/Alt Seviye/BLM2021_11-01-2021.mp4"] == "videolar/Alt Seviye/2021/ders_2.srt"
+    
+    # 3. Test lesson-lab
+    mappings_lab = get_transcription_mappings(video_paths, naming_style="lesson-lab")
+    assert mappings_lab["videolar/Alt Seviye/BLM2021_7-01-2021.mp4"] == "videolar/Alt Seviye/2021/ders_1.srt"
+    assert mappings_lab["videolar/Alt Seviye/BLM2021_11-01-2021.mp4"] == "videolar/Alt Seviye/2021/ders_1_lab.srt"
+    assert mappings_lab["videolar/Alt Seviye/BLM2021_14-01-2021.mp4"] == "videolar/Alt Seviye/2021/ders_2.srt"
+    assert mappings_lab["videolar/Alt Seviye/BLM2021_21-01-2021.mp4"] == "videolar/Alt Seviye/2021/ders_3.srt"
+    assert mappings_lab["videolar/Alt Seviye/BLM2021_25-01-2021.mp4"] == "videolar/Alt Seviye/2021/ders_3_lab.srt"
+    assert mappings_lab["videolar/Alt Seviye/BLM2021_28-01-2021.mp4"] == "videolar/Alt Seviye/2021/ders_4.srt"
+

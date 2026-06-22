@@ -38,11 +38,8 @@ class VideoDownloader:
                 r.raise_for_status()
                 total_size = int(r.headers.get("content-length", 0))
 
-                desc_name = os.path.basename(target_path)
-                if len(desc_name) > 30:
-                    desc_name = desc_name[:27] + "..."
                 with open(target_path, "wb") as f, tqdm(
-                    desc=desc_name,
+                    desc=os.path.basename(target_path),
                     total=total_size,
                     unit="iB",
                     unit_scale=True,

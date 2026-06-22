@@ -94,30 +94,10 @@ def get_transcription_mappings(
         sorted_paths = [x[0] for x in with_date]
         sorted_dates = [x[1] for x in with_date]
         indices = calculate_lesson_indices(sorted_dates)
-        idx_map = {path: idx for path, idx in zip(sorted_paths, indices)}
 
-        name_counts = {}
-        for path, date_obj in zip(sorted_paths, sorted_dates):
-            if naming_style == "lesson-lab":
-                day_diff = (date_obj - sorted_dates[0]).days
-                week_number = day_diff // 7 + 1
-                if day_diff % 7 == 0:
-                    base_name = f"ders_{week_number}"
-                else:
-                    base_name = f"ders_{week_number}_lab"
-            else:
-                idx = idx_map[path]
-                base_name = f"ders_{idx}"
-
-            if base_name not in name_counts:
-                name_counts[base_name] = 0
-                name = base_name
-            else:
-                name_counts[base_name] += 1
-                name = f"{base_name}_{name_counts[base_name]}"
-
+        for path, idx in zip(sorted_paths, indices):
             mappings[path] = os.path.join(
-                target_dir, f"{name}{SUBTITLE_EXTENSION}"
+                target_dir, f"ders_{idx}{SUBTITLE_EXTENSION}"
             )
 
     # 2. Process files without dates (keep original name)
