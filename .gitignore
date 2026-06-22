@@ -1,0 +1,7 @@
+venv
+*.mp4
+*.srt
+videolar
+*.json
+**/__pycache__
+**/*.egg-info
