@@ -5,11 +5,27 @@ Unit tests for altyazi_cikarici.utils.
 from datetime import datetime
 from altyazi_cikarici.utils import (
     extract_date,
+    extract_date_and_time,
     extract_year,
     determine_year_folder,
     calculate_lesson_indices,
     clean_course_name,
 )
+
+
+def test_extract_date_and_time():
+    """
+    Test extracting start datetime and duration from filenames.
+    """
+    filename = "BLM2512 - 1_7-10-2020_13-00_7-10-2020_14-50_a7f6.mp4"
+    dt, dur = extract_date_and_time(filename)
+    assert dt == datetime(2020, 10, 7, 13, 0)
+    assert dur == 110.0
+
+    filename_no_time = "BLM2021_1-2-2020.mp4"
+    dt, dur = extract_date_and_time(filename_no_time)
+    assert dt == datetime(2020, 2, 1)
+    assert dur is None
 
 
 def test_extract_date_valid():
@@ -19,6 +35,7 @@ def test_extract_date_valid():
     filename = "BLM2021 - 2_7-01-2021_09-00_7-01-2021_11-50_609fa2f1-74c8-4cd2-877c-5d3fcf252276.mp4"
     date_obj = extract_date(filename)
     assert date_obj == datetime(2021, 1, 7)
+
 
 
 def test_extract_date_single_digit():
@@ -157,15 +174,17 @@ def test_get_transcription_mappings_naming_styles():
     mappings_lesson = get_transcription_mappings(video_paths, naming_style="lesson")
     assert mappings_lesson["videolar/Alt Seviye/BLM2021_7-01-2021.mp4"] == "videolar/Alt Seviye/2021/ders_1.srt"
     assert mappings_lesson["videolar/Alt Seviye/BLM2021_11-01-2021.mp4"] == "videolar/Alt Seviye/2021/ders_2.srt"
-    
+    assert mappings_lesson["videolar/Alt Seviye/BLM2021_14-01-2021.mp4"] == "videolar/Alt Seviye/2021/ders_2_1.srt"
+
     # 3. Test lesson-lab
     mappings_lab = get_transcription_mappings(video_paths, naming_style="lesson-lab")
     assert mappings_lab["videolar/Alt Seviye/BLM2021_7-01-2021.mp4"] == "videolar/Alt Seviye/2021/ders_1.srt"
-    assert mappings_lab["videolar/Alt Seviye/BLM2021_11-01-2021.mp4"] == "videolar/Alt Seviye/2021/ders_1_lab.srt"
+    assert mappings_lab["videolar/Alt Seviye/BLM2021_11-01-2021.mp4"] == "videolar/Alt Seviye/2021/ders_2_lab.srt"
     assert mappings_lab["videolar/Alt Seviye/BLM2021_14-01-2021.mp4"] == "videolar/Alt Seviye/2021/ders_2.srt"
     assert mappings_lab["videolar/Alt Seviye/BLM2021_21-01-2021.mp4"] == "videolar/Alt Seviye/2021/ders_3.srt"
-    assert mappings_lab["videolar/Alt Seviye/BLM2021_25-01-2021.mp4"] == "videolar/Alt Seviye/2021/ders_3_lab.srt"
+    assert mappings_lab["videolar/Alt Seviye/BLM2021_25-01-2021.mp4"] == "videolar/Alt Seviye/2021/ders_4_lab.srt"
     assert mappings_lab["videolar/Alt Seviye/BLM2021_28-01-2021.mp4"] == "videolar/Alt Seviye/2021/ders_4.srt"
+
 
 
 def test_clean_course_name():

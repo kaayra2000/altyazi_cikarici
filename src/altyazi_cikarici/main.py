@@ -5,6 +5,7 @@ Main orchestration module for downloading and transcribing course videos.
 import json
 import os
 import sys
+from datetime import datetime
 from typing import Dict, List, Tuple
 
 from altyazi_cikarici.cli import parse_arguments
@@ -19,6 +20,7 @@ from altyazi_cikarici.utils import (
     clean_course_name,
     determine_year_folder,
     extract_date,
+    extract_date_and_time,
     get_basename_without_extension,
 )
 
@@ -77,38 +79,151 @@ def get_transcription_mappings(
         return mappings
 
     # Group into with and without dates
-    with_date: List[Tuple[str, datetime]] = []
+    with_date: List[Dict] = []
     without_date: List[str] = []
 
     for path in video_paths:
         filename = os.path.basename(path)
-        date_obj = extract_date(filename)
+        date_obj, duration = extract_date_and_time(filename)
         if date_obj:
-            with_date.append((path, date_obj))
+            with_date.append({
+                "path": path,
+                "date": date_obj,
+                "duration": duration,
+                "filename": filename
+            })
         else:
             without_date.append(path)
 
-    # 1. Process files with dates (rename to ders_X.srt based on gaps)
+    # 1. Process files with dates
     if with_date:
         # Sort chronologically by date
-        with_date.sort(key=lambda x: x[1])
-        sorted_paths = [x[0] for x in with_date]
-        sorted_dates = [x[1] for x in with_date]
-        indices = calculate_lesson_indices(sorted_dates)
-        idx_map = {path: idx for path, idx in zip(sorted_paths, indices)}
+        with_date.sort(key=lambda x: x["date"])
 
-        name_counts = {}
-        for path, date_obj in zip(sorted_paths, sorted_dates):
-            if naming_style == "lesson-lab":
-                day_diff = (date_obj - sorted_dates[0]).days
-                week_number = day_diff // 7 + 1
-                if day_diff % 7 == 0:
-                    base_name = f"ders_{week_number}"
-                else:
-                    base_name = f"ders_{week_number}_lab"
+        # Calculate weeks
+        weeks = [1]
+        for i in range(1, len(with_date)):
+            prev_v = with_date[i-1]
+            curr_v = with_date[i]
+            gap_days = (curr_v["date"].date() - prev_v["date"].date()).days
+
+            # Same week if gap < 5 days and weekday is increasing or equal (e.g. same day)
+            if gap_days < 5 and curr_v["date"].weekday() >= prev_v["date"].weekday():
+                weeks.append(weeks[-1])
             else:
-                idx = idx_map[path]
-                base_name = f"ders_{idx}"
+                step = max(1, round(gap_days / 7.0))
+                weeks.append(weeks[-1] + step)
+
+        for item, w in zip(with_date, weeks):
+            item["week"] = w
+
+        # Group by week index
+        weeks_dict: Dict[int, List[Dict]] = {}
+        for item in with_date:
+            weeks_dict.setdefault(item["week"], []).append(item)
+
+        # Determine regular weekday of the course
+        weekday_counts: Dict[int, int] = {}
+        for w_idx, items in weeks_dict.items():
+            if len(items) == 1:
+                wd = items[0]["date"].weekday()
+                weekday_counts[wd] = weekday_counts.get(wd, 0) + 1
+
+        if weekday_counts:
+            regular_weekday = max(weekday_counts, key=weekday_counts.get)
+        else:
+            all_weekday_counts = {}
+            for item in with_date:
+                wd = item["date"].weekday()
+                all_weekday_counts[wd] = all_weekday_counts.get(wd, 0) + 1
+            if all_weekday_counts:
+                regular_weekday = max(all_weekday_counts, key=all_weekday_counts.get)
+            else:
+                regular_weekday = with_date[0]["date"].weekday()
+
+        # Classify each video within its week as "ders" or "lab"
+        for w_idx, items in weeks_dict.items():
+            # Group items in this week by unique day of the week (using date.date())
+            days_in_week = {}
+            for it in items:
+                days_in_week.setdefault(it["date"].date(), []).append(it)
+
+            if len(days_in_week) == 1:
+                # All videos are on the same day -> all are "ders"
+                for it in items:
+                    it["type"] = "ders"
+            else:
+                # Multiple days in the week -> determine which day is "ders" and which is "lab"
+                day_durations = {}
+                for day, it_list in days_in_week.items():
+                    durs = [it["duration"] for it in it_list]
+                    if all(d is not None for d in durs):
+                        day_durations[day] = sum(durs)
+                    else:
+                        day_durations[day] = None
+
+                all_have_duration = all(d is not None for d in day_durations.values())
+                unique_durations = set(d for d in day_durations.values() if d is not None)
+
+                if all_have_duration and len(unique_durations) > 1:
+                    # Durations are different -> day with max duration is "ders", others are "lab"
+                    max_day = max(day_durations, key=day_durations.get)
+                    for day, it_list in days_in_week.items():
+                        for it in it_list:
+                            it["type"] = "ders" if day == max_day else "lab"
+                else:
+                    # Try file sizes on disk as proxy
+                    day_sizes = {}
+                    for day, it_list in days_in_week.items():
+                        sizes = []
+                        for it in it_list:
+                            if os.path.exists(it["path"]):
+                                sizes.append(os.path.getsize(it["path"]))
+                        if sizes:
+                            day_sizes[day] = sum(sizes)
+                        else:
+                            day_sizes[day] = 0
+
+                    unique_sizes = set(day_sizes.values())
+                    if len(unique_sizes) > 1:
+                        max_day = max(day_sizes, key=day_sizes.get)
+                        for day, it_list in days_in_week.items():
+                            for it in it_list:
+                                it["type"] = "ders" if day == max_day else "lab"
+                    else:
+                        # Fallback to regular weekday
+                        found_regular = False
+                        # Sort days so regular weekday is checked first
+                        sorted_days = sorted(days_in_week.keys(), key=lambda d: 0 if d.weekday() == regular_weekday else 1)
+                        for day in sorted_days:
+                            it_list = days_in_week[day]
+                            if day.weekday() == regular_weekday and not found_regular:
+                                for it in it_list:
+                                    it["type"] = "ders"
+                                found_regular = True
+                            else:
+                                for it in it_list:
+                                    it["type"] = "lab"
+                        if not found_regular:
+                            earliest_day = min(days_in_week.keys())
+                            for day, it_list in days_in_week.items():
+                                for it in it_list:
+                                    it["type"] = "ders" if day == earliest_day else "lab"
+
+        # Generate target paths based on naming style
+        name_counts = {}
+        for item in with_date:
+            w = item["week"]
+            t = item["type"]
+            path = item["path"]
+
+            if naming_style == "lesson-lab":
+                if t == "ders":
+                    base_name = f"ders_{w}"
+                else:
+                    base_name = f"ders_{w}_lab"
+            else:
+                base_name = f"ders_{w}"
 
             if base_name not in name_counts:
                 name_counts[base_name] = 0

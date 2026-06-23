@@ -6,7 +6,7 @@ and calculating lesson indices chronologically.
 import os
 import re
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Tuple
 
 from altyazi_cikarici.constants import (
     BACKUP_YEAR_PATTERN,
@@ -31,6 +31,35 @@ def extract_date(filename: str) -> Optional[datetime]:
         return datetime(int(year_str), int(month_str), int(day_str))
     except ValueError:
         return None
+
+
+def extract_date_and_time(filename: str) -> Tuple[Optional[datetime], Optional[float]]:
+    """
+    Extracts a datetime and duration (in minutes) from a filename.
+    Filename is expected to contain: start_date_start_time_end_date_end_time
+    e.g., BLM2512 - 1_7-10-2020_13-00_7-10-2020_14-50_...
+    Returns (start_datetime, duration_mins).
+    If start/end times are not present or cannot be parsed, falls back to
+    extract_date and returns (date_obj, None).
+    """
+    date_obj = extract_date(filename)
+    if not date_obj:
+        return None, None
+
+    pattern = r"(\d{1,2}-\d{1,2}-\d{4})_(\d{2}-\d{2})_(\d{1,2}-\d{1,2}-\d{4})_(\d{2}-\d{2})"
+    match = re.search(pattern, filename)
+    duration_mins = None
+    if match:
+        start_date_str, start_time_str, end_date_str, end_time_str = match.groups()
+        try:
+            start_dt = datetime.strptime(f"{start_date_str}_{start_time_str}", "%d-%m-%Y_%H-%M")
+            end_dt = datetime.strptime(f"{end_date_str}_{end_time_str}", "%d-%m-%Y_%H-%M")
+            duration_mins = (end_dt - start_dt).total_seconds() / 60
+            date_obj = start_dt
+        except ValueError:
+            pass
+    return date_obj, duration_mins
+
 
 
 def extract_year(filename: str) -> Optional[str]:
