@@ -52,8 +52,8 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
     parser.add_argument(
         "--naming-style",
         choices=["lesson", "original", "lesson-lab"],
-        default="lesson",
-        help="Subtitle naming convention: 'lesson' (e.g., ders_1.srt), 'original' (keeps video name), or 'lesson-lab' (odd indices as ders_X, even indices as ders_X_lab).",
+        default="lesson-lab",
+        help="Subtitle naming convention: 'lesson-lab' (default, detects lab sessions), 'lesson' (e.g., ders_1.srt), or 'original' (keeps video name).",
     )
 
     group = parser.add_mutually_exclusive_group()

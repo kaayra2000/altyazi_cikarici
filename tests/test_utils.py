@@ -11,6 +11,7 @@ from altyazi_cikarici.utils import (
     calculate_lesson_indices,
     clean_course_name,
 )
+from altyazi_cikarici.cli import parse_arguments
 
 
 def test_extract_date_and_time():
@@ -186,6 +187,31 @@ def test_get_transcription_mappings_naming_styles():
     assert mappings_lab["videolar/Alt Seviye/BLM2021_28-01-2021.mp4"] == "videolar/Alt Seviye/2021/ders_4.srt"
 
 
+def test_get_transcription_mappings_detects_same_day_lab():
+    """
+    Test that a shorter same-day session is marked as lab.
+    """
+    from altyazi_cikarici.main import get_transcription_mappings
+
+    video_paths = [
+        "videolar/Alt Seviye/BLM2021_7-01-2021_09-00_7-01-2021_11-50.mp4",
+        "videolar/Alt Seviye/BLM2021_7-01-2021_13-00_7-01-2021_13-50.mp4",
+    ]
+
+    mappings = get_transcription_mappings(video_paths, naming_style="lesson-lab")
+
+    assert mappings[video_paths[0]] == "videolar/Alt Seviye/2021/ders_1.srt"
+    assert mappings[video_paths[1]] == "videolar/Alt Seviye/2021/ders_1_lab.srt"
+
+
+def test_parse_arguments_defaults_to_lesson_lab():
+    """
+    Test that CLI defaults to lab-aware naming.
+    """
+    args = parse_arguments([])
+    assert args.naming_style == "lesson-lab"
+
+
 
 def test_clean_course_name():
     """
@@ -195,5 +221,4 @@ def test_clean_course_name():
     assert clean_course_name("İşletim Sistemleri (çift sayılı dersler uygulama ve lab)") == "İşletim Sistemleri"
     assert clean_course_name("Veritabanı Yönetimi(tek sayılı dersler lab)") == "Veritabanı Yönetimi"
     assert clean_course_name("Normal Ders") == "Normal Ders"
-
 

@@ -66,9 +66,9 @@ alt-yazi-cikarici -s videolar --transcribe-only
 ```
 
 ### 4. İsimlendirme Stilleri (`--naming-style`)
-- `lesson` (Varsayılan): Tarih sırasına göre `ders_1.srt`, `ders_2.srt` şeklinde haftalık atlamalı isimlendirir.
+- `lesson-lab` (Varsayılan): Aynı haftadaki kısa/ek oturumları laboratuvar olarak algılayıp `ders_X_lab.srt`, ana dersleri `ders_X.srt` olarak isimlendirir.
+- `lesson`: Tarih sırasına göre `ders_1.srt`, `ders_2.srt` şeklinde haftalık atlamalı isimlendirir.
 - `original`: Dosya adını değiştirmeden sonuna `.srt` ekler.
-- `lesson-lab`: İlk dersin yapıldığı güne kıyasla tam 7'nin katı gün farkına sahip dersleri ana ders (`ders_X.srt`), bu haftalık ana günlerin arasına denk gelen diğer günlerdeki ek/uygulama derslerini ise laboratuvar (`ders_X_lab.srt`) olarak isimlendirir (örneğin; ilk haftadaki ana ders `ders_1.srt`, ara günde yapılan lab ise `ders_1_lab.srt` olur).
 
 ```bash
 alt-yazi-cikarici -s videolar --transcribe-only --naming-style lesson-lab

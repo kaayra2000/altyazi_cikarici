@@ -5,21 +5,17 @@ Main orchestration module for downloading and transcribing course videos.
 import json
 import os
 import sys
-from datetime import datetime
-from typing import Dict, List, Tuple
+from datetime import date, datetime
+from typing import Dict, List, Optional
 
 from altyazi_cikarici.cli import parse_arguments
 from altyazi_cikarici.constants import (
     SUBTITLE_EXTENSION,
     VIDEO_EXTENSIONS,
 )
-from altyazi_cikarici.downloader import VideoDownloader
-from altyazi_cikarici.transcriber import VideoTranscriber
 from altyazi_cikarici.utils import (
-    calculate_lesson_indices,
     clean_course_name,
     determine_year_folder,
-    extract_date,
     extract_date_and_time,
     get_basename_without_extension,
 )
@@ -50,6 +46,109 @@ def find_all_video_dirs(root_dir: str) -> List[str]:
         if has_video:
             video_dirs.append(dirpath)
     return video_dirs
+
+
+def _sum_file_sizes(items: List[Dict]) -> Optional[int]:
+    """
+    Returns total file size for a group when all files are available.
+    """
+    sizes = []
+    for item in items:
+        if not os.path.exists(item["path"]):
+            return None
+        sizes.append(os.path.getsize(item["path"]))
+    return sum(sizes)
+
+
+def _pick_main_lesson_day(
+    days_in_week: Dict[date, List[Dict]],
+    regular_weekday: int,
+) -> date:
+    """
+    Picks the main lecture day among same-week sessions.
+    Longer sessions are preferred; when duration is missing, file size is used.
+    """
+    day_durations: Dict[date, Optional[float]] = {}
+    for day, items in days_in_week.items():
+        durations = [item["duration"] for item in items]
+        day_durations[day] = (
+            sum(durations) if all(d is not None for d in durations) else None
+        )
+
+    if all(value is not None for value in day_durations.values()):
+        unique_durations = set(day_durations.values())
+        if len(unique_durations) > 1:
+            return max(day_durations, key=lambda day: day_durations[day])
+
+    day_sizes = {
+        day: _sum_file_sizes(items)
+        for day, items in days_in_week.items()
+    }
+    if all(value is not None for value in day_sizes.values()):
+        unique_sizes = set(day_sizes.values())
+        if len(unique_sizes) > 1:
+            return max(day_sizes, key=lambda day: day_sizes[day])
+
+    for day in sorted(days_in_week):
+        if day.weekday() == regular_weekday:
+            return day
+
+    return min(days_in_week)
+
+
+def _classify_week_sessions(
+    items: List[Dict],
+    regular_weekday: int,
+) -> None:
+    """
+    Marks same-week videos as main lectures or labs in-place.
+    Lab sessions are usually shorter extra meetings in the same course week.
+    """
+    if len(items) == 1:
+        items[0]["type"] = "ders"
+        return
+
+    days_in_week: Dict[date, List[Dict]] = {}
+    for item in items:
+        days_in_week.setdefault(item["date"].date(), []).append(item)
+
+    main_day = _pick_main_lesson_day(days_in_week, regular_weekday)
+    if len(days_in_week) > 1:
+        for day, day_items in days_in_week.items():
+            session_type = "ders" if day == main_day else "lab"
+            for item in day_items:
+                item["type"] = session_type
+        return
+
+    same_day_items = next(iter(days_in_week.values()))
+    durations = [item["duration"] for item in same_day_items]
+    if (
+        all(duration is not None for duration in durations)
+        and len(set(durations)) > 1
+    ):
+        longest = max(durations)
+        main_assigned = False
+        for item in sorted(same_day_items, key=lambda it: it["date"]):
+            if item["duration"] == longest and not main_assigned:
+                item["type"] = "ders"
+                main_assigned = True
+            else:
+                item["type"] = "lab"
+        return
+
+    sizes = {
+        item["path"]: os.path.getsize(item["path"])
+        for item in same_day_items
+        if os.path.exists(item["path"])
+    }
+    if len(sizes) == len(same_day_items) and len(set(sizes.values())) > 1:
+        largest_path = max(sizes, key=sizes.get)
+        for item in same_day_items:
+            item["type"] = "ders" if item["path"] == largest_path else "lab"
+        return
+
+    for item in same_day_items:
+        item["type"] = "ders"
 
 
 def get_transcription_mappings(
@@ -142,73 +241,8 @@ def get_transcription_mappings(
                 regular_weekday = with_date[0]["date"].weekday()
 
         # Classify each video within its week as "ders" or "lab"
-        for w_idx, items in weeks_dict.items():
-            # Group items in this week by unique day of the week (using date.date())
-            days_in_week = {}
-            for it in items:
-                days_in_week.setdefault(it["date"].date(), []).append(it)
-
-            if len(days_in_week) == 1:
-                # All videos are on the same day -> all are "ders"
-                for it in items:
-                    it["type"] = "ders"
-            else:
-                # Multiple days in the week -> determine which day is "ders" and which is "lab"
-                day_durations = {}
-                for day, it_list in days_in_week.items():
-                    durs = [it["duration"] for it in it_list]
-                    if all(d is not None for d in durs):
-                        day_durations[day] = sum(durs)
-                    else:
-                        day_durations[day] = None
-
-                all_have_duration = all(d is not None for d in day_durations.values())
-                unique_durations = set(d for d in day_durations.values() if d is not None)
-
-                if all_have_duration and len(unique_durations) > 1:
-                    # Durations are different -> day with max duration is "ders", others are "lab"
-                    max_day = max(day_durations, key=day_durations.get)
-                    for day, it_list in days_in_week.items():
-                        for it in it_list:
-                            it["type"] = "ders" if day == max_day else "lab"
-                else:
-                    # Try file sizes on disk as proxy
-                    day_sizes = {}
-                    for day, it_list in days_in_week.items():
-                        sizes = []
-                        for it in it_list:
-                            if os.path.exists(it["path"]):
-                                sizes.append(os.path.getsize(it["path"]))
-                        if sizes:
-                            day_sizes[day] = sum(sizes)
-                        else:
-                            day_sizes[day] = 0
-
-                    unique_sizes = set(day_sizes.values())
-                    if len(unique_sizes) > 1:
-                        max_day = max(day_sizes, key=day_sizes.get)
-                        for day, it_list in days_in_week.items():
-                            for it in it_list:
-                                it["type"] = "ders" if day == max_day else "lab"
-                    else:
-                        # Fallback to regular weekday
-                        found_regular = False
-                        # Sort days so regular weekday is checked first
-                        sorted_days = sorted(days_in_week.keys(), key=lambda d: 0 if d.weekday() == regular_weekday else 1)
-                        for day in sorted_days:
-                            it_list = days_in_week[day]
-                            if day.weekday() == regular_weekday and not found_regular:
-                                for it in it_list:
-                                    it["type"] = "ders"
-                                found_regular = True
-                            else:
-                                for it in it_list:
-                                    it["type"] = "lab"
-                        if not found_regular:
-                            earliest_day = min(days_in_week.keys())
-                            for day, it_list in days_in_week.items():
-                                for it in it_list:
-                                    it["type"] = "ders" if day == earliest_day else "lab"
+        for items in weeks_dict.values():
+            _classify_week_sessions(items, regular_weekday)
 
         # Generate target paths based on naming style
         name_counts = {}
@@ -246,7 +280,7 @@ def get_transcription_mappings(
     return mappings
 
 
-def transcribe_videos(mappings: Dict[str, str], transcriber: VideoTranscriber) -> None:
+def transcribe_videos(mappings: Dict[str, str], transcriber: object) -> None:
     """
     Transcribes videos using mappings and a transcriber instance.
     """
@@ -260,10 +294,10 @@ def transcribe_videos(mappings: Dict[str, str], transcriber: VideoTranscriber) -
             print(f"Transcription failed for: {video_path}")
 
 
-def process_directory(dir_path: str, transcriber: VideoTranscriber) -> None:
+def process_directory(dir_path: str, transcriber: object) -> None:
     """
     Processes all videos in a single directory.
-    Uses default 'lesson' naming style unless overridden by config.
+    Uses default 'lesson-lab' naming style unless overridden by config.
     """
     print(f"Processing directory: {dir_path}")
     video_files = find_video_files(dir_path)
@@ -271,12 +305,12 @@ def process_directory(dir_path: str, transcriber: VideoTranscriber) -> None:
         print(f"No video files found in {dir_path}")
         return
 
-    # Use naming_style='lesson' by default, or get from context/args
-    mappings = get_transcription_mappings(video_files, naming_style="lesson")
+    # Use naming_style='lesson-lab' by default, or get from context/args
+    mappings = get_transcription_mappings(video_files, naming_style="lesson-lab")
     transcribe_videos(mappings, transcriber)
 
 
-def process_recursive(root_dir: str, transcriber: VideoTranscriber) -> None:
+def process_recursive(root_dir: str, transcriber: object) -> None:
     """
     Recursively scans and transcribes videos under root_dir.
     """
@@ -316,6 +350,9 @@ def main() -> None:
     """
     CLI Entrypoint.
     """
+    from altyazi_cikarici.downloader import VideoDownloader
+    from altyazi_cikarici.transcriber import VideoTranscriber
+
     args = parse_arguments()
 
     # Determine if source is JSON or directory
