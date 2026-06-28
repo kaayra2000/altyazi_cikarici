@@ -290,7 +290,9 @@ def transcribe_videos(mappings: Dict[str, str], transcriber: object) -> None:
             continue
 
         success = transcriber.transcribe(video_path, srt_path)
-        if not success:
+        if success is None:
+            print(f"Transcription skipped for: {video_path}")
+        elif not success:
             print(f"Transcription failed for: {video_path}")
 
 

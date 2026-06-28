@@ -4,6 +4,7 @@ Transcriber module using faster-whisper to extract subtitles from videos.
 
 import os
 import time
+import unicodedata
 from typing import Optional
 from faster_whisper import WhisperModel
 
@@ -16,6 +17,13 @@ from altyazi_cikarici.constants import (
 )
 
 
+SUPPORTED_TRANSCRIPTION_LANGUAGES = {
+    "tr": "Turkish",
+    "en": "English",
+}
+MIN_LANGUAGE_PROBABILITY = 0.50
+
+
 def format_srt_time(seconds: float) -> str:
     """
     Formats a time in seconds to SRT time format: HH:MM:SS,mmm.
@@ -25,6 +33,59 @@ def format_srt_time(seconds: float) -> str:
     secs = int(seconds % 60)
     milliseconds = int((seconds - int(seconds)) * 1000)
     return f"{hours:02}:{minutes:02}:{secs:02},{milliseconds:03}"
+
+
+def _normalize_language(language: Optional[str]) -> Optional[str]:
+    """
+    Normalizes Whisper language codes for the supported prompt choices.
+    """
+    if not language:
+        return None
+
+    value = unicodedata.normalize("NFKD", language.strip().lower())
+    value = value.encode("ascii", "ignore").decode("ascii")
+    aliases = {
+        "turkish": "tr",
+        "turkce": "tr",
+        "english": "en",
+        "ingilizce": "en",
+    }
+    return aliases.get(value, value)
+
+
+def _prompt_for_language(
+    detected_language: Optional[str],
+    probability: Optional[float],
+) -> Optional[str]:
+    """
+    Asks the user which supported language to use when detection is inconclusive.
+    """
+    probability_text = (
+        f" (olasilik: {probability:.2f})" if probability is not None else ""
+    )
+    if detected_language:
+        print(
+            "Video dili Ingilizce veya Turkce olarak dogrulanamadi. "
+            f"Tespit edilen dil: {detected_language}{probability_text}."
+        )
+    else:
+        print("Video dili tespit edilemedi.")
+
+    while True:
+        try:
+            print("Bu video icin altyazi dili secin [tr/en/skip]:", flush=True)
+            answer = input().strip()
+        except EOFError:
+            print("Dil secimi alinamadi, video atlaniyor.")
+            return None
+
+        language = _normalize_language(answer)
+        if language in SUPPORTED_TRANSCRIPTION_LANGUAGES:
+            return language
+        if language in {"", "skip", "s", "atla"}:
+            print("Video atlaniyor.")
+            return None
+        print("Lutfen 'tr', 'en' veya 'skip' girin.")
 
 
 class VideoTranscriber:
@@ -56,10 +117,34 @@ class VideoTranscriber:
             )
         return self._model
 
-    def transcribe(self, video_path: str, srt_path: str) -> bool:
+    def _resolve_language(self, info: object) -> Optional[str]:
+        """
+        Returns 'tr'/'en' when Whisper confidently detects a supported language.
+        Otherwise asks the user which supported language to use, or skips.
+        """
+        detected_language = _normalize_language(
+            getattr(info, "language", None)
+        )
+        probability = getattr(info, "language_probability", None)
+
+        if (
+            detected_language in SUPPORTED_TRANSCRIPTION_LANGUAGES
+            and probability is not None
+            and probability >= MIN_LANGUAGE_PROBABILITY
+        ):
+            print(
+                "Detected language: "
+                f"{SUPPORTED_TRANSCRIPTION_LANGUAGES[detected_language]} "
+                f"({detected_language}, probability: {probability:.2f})"
+            )
+            return detected_language
+
+        return _prompt_for_language(detected_language, probability)
+
+    def transcribe(self, video_path: str, srt_path: str) -> Optional[bool]:
         """
         Transcribes the video at video_path and writes the subtitles to srt_path.
-        Returns True if successful, False otherwise.
+        Returns True if successful, False if failed, or None if skipped.
         """
         if not os.path.exists(video_path):
             print(f"Video file not found: {video_path}")
@@ -75,10 +160,29 @@ class VideoTranscriber:
             model = self._load_model()
             segments, info = model.transcribe(
                 video_path,
-                language="tr",
                 vad_filter=VAD_FILTER,
                 beam_size=BEAM_SIZE,
             )
+            language = self._resolve_language(info)
+            if language is None:
+                return None
+
+            detected_language = _normalize_language(
+                getattr(info, "language", None)
+            )
+            probability = getattr(info, "language_probability", None)
+            should_rerun = (
+                detected_language != language
+                or probability is None
+                or probability < MIN_LANGUAGE_PROBABILITY
+            )
+            if should_rerun:
+                segments, _ = model.transcribe(
+                    video_path,
+                    language=language,
+                    vad_filter=VAD_FILTER,
+                    beam_size=BEAM_SIZE,
+                )
 
             # Resolve segments generator to list
             segment_list = list(segments)
