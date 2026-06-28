@@ -56,6 +56,22 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
         help="Subtitle naming convention: 'lesson-lab' (default, detects lab sessions), 'lesson' (e.g., ders_1.srt), or 'original' (keeps video name).",
     )
     parser.add_argument(
+        "--language",
+        choices=["auto", "tr", "en"],
+        default="auto",
+        help="Subtitle language: 'tr' or 'en' to skip language detection, 'auto' to detect the overall video language (default).",
+    )
+    parser.add_argument(
+        "--segment-language-detection",
+        action="store_true",
+        help="Detect Turkish/English per segment. Slower than overall video language detection.",
+    )
+    parser.add_argument(
+        "--ask-uncertain-language",
+        action="store_true",
+        help="Ask what to do when the overall video language is not confidently Turkish or English. By default, the video is skipped.",
+    )
+    parser.add_argument(
         "--ask-uncertain-segments",
         action="store_true",
         help="Ask what to do when a video segment language is not confidently Turkish or English. By default, uncertain segments use the overall video language.",

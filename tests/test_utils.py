@@ -206,18 +206,29 @@ def test_get_transcription_mappings_detects_same_day_lab():
 
 def test_parse_arguments_defaults_to_lesson_lab():
     """
-    Test that CLI defaults to lab-aware naming.
+    Test that CLI defaults to lab-aware naming and fast language detection.
     """
     args = parse_arguments([])
     assert args.naming_style == "lesson-lab"
+    assert args.language == "auto"
+    assert args.segment_language_detection is False
+    assert args.ask_uncertain_language is False
     assert args.ask_uncertain_segments is False
 
 
-def test_parse_arguments_accepts_uncertain_segment_prompt_flag():
+def test_parse_arguments_accepts_language_detection_flags():
     """
-    Test enabling prompts for uncertain segment language detection.
+    Test manual language and optional interactive detection flags.
     """
-    args = parse_arguments(["--ask-uncertain-segments"])
+    args = parse_arguments([
+        "--language", "en",
+        "--segment-language-detection",
+        "--ask-uncertain-language",
+        "--ask-uncertain-segments",
+    ])
+    assert args.language == "en"
+    assert args.segment_language_detection is True
+    assert args.ask_uncertain_language is True
     assert args.ask_uncertain_segments is True
 
 

@@ -117,6 +117,7 @@ def _prompt_for_language(
 def _prompt_to_confirm_general_language(
     detected_language: Optional[str],
     probability: Optional[float],
+    ask_uncertain_language: bool,
 ) -> Optional[str]:
     """
     Returns a confident overall language guess, otherwise asks the user.
@@ -134,7 +135,14 @@ def _prompt_to_confirm_general_language(
         )
         return detected_language
 
-    return _prompt_for_language(detected_language, probability, context="Video")
+    if ask_uncertain_language:
+        return _prompt_for_language(detected_language, probability, context="Video")
+
+    print(
+        "Genel video dili Turkce/Ingilizce olarak guvenle tespit edilemedi; "
+        "video atlaniyor."
+    )
+    return None
 
 
 def _sort_segments(segments: Iterable[object]) -> List[object]:
@@ -154,11 +162,19 @@ class VideoTranscriber:
         model_name: str = DEFAULT_WHISPER_MODEL,
         device: str = DEFAULT_DEVICE,
         compute_type: str = DEFAULT_COMPUTE_TYPE,
+        language: str = "auto",
+        segment_language_detection: bool = False,
+        ask_uncertain_language: bool = False,
         ask_uncertain_segments: bool = False,
     ):
         self.model_name = model_name
         self.device = device
         self.compute_type = compute_type
+        self.language = _normalize_language(language) or "auto"
+        if self.language not in {"auto", *SUPPORTED_TRANSCRIPTION_LANGUAGES}:
+            raise ValueError("language must be one of: auto, tr, en")
+        self.segment_language_detection = segment_language_detection
+        self.ask_uncertain_language = ask_uncertain_language
         self.ask_uncertain_segments = ask_uncertain_segments
         self._model: Optional[WhisperModel] = None
 
@@ -216,8 +232,15 @@ class VideoTranscriber:
         video_path: str,
     ) -> Optional[str]:
         """
-        Detects the overall video language and asks the user to confirm it.
+        Resolves the overall video language from manual config or detection.
         """
+        if self.language in SUPPORTED_TRANSCRIPTION_LANGUAGES:
+            print(
+                "Altyazi dili elle secildi: "
+                f"{_language_label(self.language)} ({self.language})."
+            )
+            return self.language
+
         _, info = model.transcribe(
             video_path,
             vad_filter=VAD_FILTER,
@@ -228,7 +251,11 @@ class VideoTranscriber:
             getattr(info, "language", None)
         )
         probability = getattr(info, "language_probability", None)
-        return _prompt_to_confirm_general_language(detected_language, probability)
+        return _prompt_to_confirm_general_language(
+            detected_language,
+            probability,
+            self.ask_uncertain_language,
+        )
 
     def _transcribe_clip(
         self,
@@ -298,35 +325,45 @@ class VideoTranscriber:
             if general_language is None:
                 return None
 
-            print(
-                "Parca parca dil algilama basliyor "
-                "(yalnizca Turkce/Ingilizce kabul edilecek)."
-            )
-            base_segments, _ = model.transcribe(
-                video_path,
-                language=general_language,
-                multilingual=True,
-                vad_filter=VAD_FILTER,
-                beam_size=BEAM_SIZE,
-            )
             segment_list = []
-            for segment in _sort_segments(list(base_segments)):
-                if not segment.text.strip() or segment.end <= segment.start:
-                    continue
-                clip_segments, clip_language = self._transcribe_clip(
-                    model,
+            if not self.segment_language_detection:
+                print(f"Video genel diliyle yaziliyor: {general_language}.")
+                segments, _ = model.transcribe(
                     video_path,
-                    max(0.0, segment.start),
-                    segment.end,
-                    fallback_language=general_language,
+                    language=general_language,
+                    vad_filter=VAD_FILTER,
+                    beam_size=BEAM_SIZE,
                 )
-                if clip_language:
-                    print(
-                        f"Parca yazildi: {segment.start:.2f}-{segment.end:.2f} "
-                        f"{clip_language}"
+                segment_list = _sort_segments(list(segments))
+            else:
+                print(
+                    "Parca parca dil algilama basliyor "
+                    "(yalnizca Turkce/Ingilizce kabul edilecek)."
+                )
+                base_segments, _ = model.transcribe(
+                    video_path,
+                    language=general_language,
+                    multilingual=True,
+                    vad_filter=VAD_FILTER,
+                    beam_size=BEAM_SIZE,
+                )
+                for segment in _sort_segments(list(base_segments)):
+                    if not segment.text.strip() or segment.end <= segment.start:
+                        continue
+                    clip_segments, clip_language = self._transcribe_clip(
+                        model,
+                        video_path,
+                        max(0.0, segment.start),
+                        segment.end,
+                        fallback_language=general_language,
                     )
-                segment_list.extend(clip_segments)
-            segment_list = _sort_segments(segment_list)
+                    if clip_language:
+                        print(
+                            f"Parca yazildi: {segment.start:.2f}-{segment.end:.2f} "
+                            f"{clip_language}"
+                        )
+                    segment_list.extend(clip_segments)
+                segment_list = _sort_segments(segment_list)
 
             with open(srt_path, "w", encoding="utf-8") as f:
                 for idx, seg in enumerate(segment_list, 1):

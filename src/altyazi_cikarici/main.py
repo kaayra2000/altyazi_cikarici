@@ -366,6 +366,9 @@ def main() -> None:
         transcriber = VideoTranscriber(
             model_name=args.model,
             device=args.device,
+            language=args.language,
+            segment_language_detection=args.segment_language_detection,
+            ask_uncertain_language=args.ask_uncertain_language,
             ask_uncertain_segments=args.ask_uncertain_segments,
         )
 
