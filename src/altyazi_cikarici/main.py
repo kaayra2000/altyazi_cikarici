@@ -366,6 +366,7 @@ def main() -> None:
         transcriber = VideoTranscriber(
             model_name=args.model,
             device=args.device,
+            ask_uncertain_segments=args.ask_uncertain_segments,
         )
 
     if is_json:

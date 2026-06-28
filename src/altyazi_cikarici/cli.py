@@ -55,6 +55,11 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
         default="lesson-lab",
         help="Subtitle naming convention: 'lesson-lab' (default, detects lab sessions), 'lesson' (e.g., ders_1.srt), or 'original' (keeps video name).",
     )
+    parser.add_argument(
+        "--ask-uncertain-segments",
+        action="store_true",
+        help="Ask what to do when a video segment language is not confidently Turkish or English. By default, uncertain segments use the overall video language.",
+    )
 
     group = parser.add_mutually_exclusive_group()
     group.add_argument(

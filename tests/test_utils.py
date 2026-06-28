@@ -210,6 +210,15 @@ def test_parse_arguments_defaults_to_lesson_lab():
     """
     args = parse_arguments([])
     assert args.naming_style == "lesson-lab"
+    assert args.ask_uncertain_segments is False
+
+
+def test_parse_arguments_accepts_uncertain_segment_prompt_flag():
+    """
+    Test enabling prompts for uncertain segment language detection.
+    """
+    args = parse_arguments(["--ask-uncertain-segments"])
+    assert args.ask_uncertain_segments is True
 
 
 
@@ -221,4 +230,3 @@ def test_clean_course_name():
     assert clean_course_name("İşletim Sistemleri (çift sayılı dersler uygulama ve lab)") == "İşletim Sistemleri"
     assert clean_course_name("Veritabanı Yönetimi(tek sayılı dersler lab)") == "Veritabanı Yönetimi"
     assert clean_course_name("Normal Ders") == "Normal Ders"
-
