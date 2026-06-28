@@ -67,6 +67,12 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
         help="Detect Turkish/English per segment. Slower than overall video language detection.",
     )
     parser.add_argument(
+        "--segment-language-interval-minutes",
+        type=float,
+        default=5.0,
+        help="Language detection interval in minutes when --segment-language-detection is enabled (default: 5).",
+    )
+    parser.add_argument(
         "--ask-uncertain-language",
         action="store_true",
         help="Ask what to do when the overall video language is not confidently Turkish or English. By default, the video is skipped.",

@@ -368,6 +368,7 @@ def main() -> None:
             device=args.device,
             language=args.language,
             segment_language_detection=args.segment_language_detection,
+            segment_language_interval_minutes=args.segment_language_interval_minutes,
             ask_uncertain_language=args.ask_uncertain_language,
             ask_uncertain_segments=args.ask_uncertain_segments,
         )

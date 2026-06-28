@@ -212,6 +212,7 @@ def test_parse_arguments_defaults_to_lesson_lab():
     assert args.naming_style == "lesson-lab"
     assert args.language == "auto"
     assert args.segment_language_detection is False
+    assert args.segment_language_interval_minutes == 20.0
     assert args.ask_uncertain_language is False
     assert args.ask_uncertain_segments is False
 
@@ -223,11 +224,13 @@ def test_parse_arguments_accepts_language_detection_flags():
     args = parse_arguments([
         "--language", "en",
         "--segment-language-detection",
+        "--segment-language-interval-minutes", "15",
         "--ask-uncertain-language",
         "--ask-uncertain-segments",
     ])
     assert args.language == "en"
     assert args.segment_language_detection is True
+    assert args.segment_language_interval_minutes == 15.0
     assert args.ask_uncertain_language is True
     assert args.ask_uncertain_segments is True
 

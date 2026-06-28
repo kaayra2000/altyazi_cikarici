@@ -23,6 +23,7 @@ SUPPORTED_TRANSCRIPTION_LANGUAGES = {
 }
 MIN_LANGUAGE_PROBABILITY = 0.50
 LANGUAGE_DETECTION_SEGMENTS = 3
+DEFAULT_SEGMENT_LANGUAGE_INTERVAL_MINUTES = 20.0
 
 
 def format_srt_time(seconds: float) -> str:
@@ -152,6 +153,18 @@ def _sort_segments(segments: Iterable[object]) -> List[object]:
     return sorted(segments, key=lambda segment: (segment.start, segment.end))
 
 
+def _language_ranges(duration: float, interval_seconds: float) -> Iterable[Tuple[float, float]]:
+    """
+    Yields contiguous time ranges for interval-based language detection.
+    """
+    start = 0.0
+    while start < duration:
+        end = min(duration, start + interval_seconds)
+        if end > start:
+            yield start, end
+        start = end
+
+
 class VideoTranscriber:
     """
     Handles loading the Whisper model and transcribing video files to SRT subtitles.
@@ -164,6 +177,9 @@ class VideoTranscriber:
         compute_type: str = DEFAULT_COMPUTE_TYPE,
         language: str = "auto",
         segment_language_detection: bool = False,
+        segment_language_interval_minutes: float = (
+            DEFAULT_SEGMENT_LANGUAGE_INTERVAL_MINUTES
+        ),
         ask_uncertain_language: bool = False,
         ask_uncertain_segments: bool = False,
     ):
@@ -174,6 +190,9 @@ class VideoTranscriber:
         if self.language not in {"auto", *SUPPORTED_TRANSCRIPTION_LANGUAGES}:
             raise ValueError("language must be one of: auto, tr, en")
         self.segment_language_detection = segment_language_detection
+        if segment_language_interval_minutes <= 0:
+            raise ValueError("segment_language_interval_minutes must be positive")
+        self.segment_language_interval_minutes = segment_language_interval_minutes
         self.ask_uncertain_language = ask_uncertain_language
         self.ask_uncertain_segments = ask_uncertain_segments
         self._model: Optional[WhisperModel] = None
@@ -336,9 +355,11 @@ class VideoTranscriber:
                 )
                 segment_list = _sort_segments(list(segments))
             else:
+                interval_seconds = self.segment_language_interval_minutes * 60.0
                 print(
-                    "Parca parca dil algilama basliyor "
-                    "(yalnizca Turkce/Ingilizce kabul edilecek)."
+                    "Aralikli dil algilama basliyor "
+                    f"({self.segment_language_interval_minutes:g} dakika, "
+                    "yalnizca Turkce/Ingilizce kabul edilecek)."
                 )
                 base_segments, _ = model.transcribe(
                     video_path,
@@ -347,22 +368,28 @@ class VideoTranscriber:
                     vad_filter=VAD_FILTER,
                     beam_size=BEAM_SIZE,
                 )
-                for segment in _sort_segments(list(base_segments)):
-                    if not segment.text.strip() or segment.end <= segment.start:
-                        continue
-                    clip_segments, clip_language = self._transcribe_clip(
-                        model,
-                        video_path,
-                        max(0.0, segment.start),
-                        segment.end,
-                        fallback_language=general_language,
-                    )
-                    if clip_language:
-                        print(
-                            f"Parca yazildi: {segment.start:.2f}-{segment.end:.2f} "
-                            f"{clip_language}"
+                base_segment_list = _sort_segments(list(base_segments))
+                if base_segment_list:
+                    video_duration = base_segment_list[-1].end
+                    for start, end in _language_ranges(
+                        video_duration,
+                        interval_seconds,
+                    ):
+                        clip_segments, clip_language = self._transcribe_clip(
+                            model,
+                            video_path,
+                            start,
+                            end,
+                            fallback_language=general_language,
                         )
-                    segment_list.extend(clip_segments)
+                        if not clip_segments:
+                            continue
+                        if clip_language:
+                            print(
+                                f"Aralik yazildi: {start:.2f}-{end:.2f} "
+                                f"{clip_language}"
+                            )
+                        segment_list.extend(clip_segments)
                 segment_list = _sort_segments(segment_list)
 
             with open(srt_path, "w", encoding="utf-8") as f:
